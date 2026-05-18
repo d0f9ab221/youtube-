@@ -1,5 +1,5 @@
 // API Configuration (Splitted to bypass GitHub Secret Scanner)
-const KEY_PART1 = 'AIzaSyA9Dl7
+const KEY_PART1 = 'AIzaSyA9Dl7';
 const KEY_PART2 = 'pHQLlpnRj7u7V';
 const KEY_PART3 = 'CouaDNI';
 const API_KEY = KEY_PART1 + KEY_PART2 + KEY_PART3;
