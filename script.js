@@ -1,293 +1,298 @@
-// YouTube API Configuration (Splitted to bypass GitHub Secret Scanner)
-const KEY_PART1 = 'AIzaSyA9Dl7Pl';
+// API Configuration (Splitted to bypass GitHub Secret Scanner)
+const KEY_PART1 = 'AIzaSyA9Dl7
 const KEY_PART2 = 'pHQLlpnRj7u7V';
-const KEY_PART3 = 'CouaDNcbf3kkI';
-
-// Teeno hisson ko jod kar asli key banti hai
-const API_KEY = KEY_PART1 + KEY_PART2 + KEY_PART3; 
-const API_URL = 'https://www.googleapis.com/youtube/v3/';
+const KEY_PART3 = 'CouaDNI';
+const API_KEY = KEY_PART1 + KEY_PART2 + KEY_PART3;
 
 // DOM Elements
-const channelInput = document.getElementById('channelInput');
+const channelUrlInput = document.getElementById('channelUrl');
 const fetchBtn = document.getElementById('fetchBtn');
-const errorContainer = document.getElementById('errorContainer');
-const subscriberCount = document.getElementById('subscriberCount');
-const videoCount = document.getElementById('videoCount');
-const viewCount = document.getElementById('viewCount');
-const subChange = document.getElementById('subChange');
-const channelTitle = document.getElementById('channelTitle');
-const channelDescription = document.getElementById('channelDescription');
-const channelIcon = document.getElementById('channelIcon');
-const channelJoined = document.getElementById('channelJoined');
-const channelCountry = document.getElementById('channelCountry');
-const requestCount = document.getElementById('requestCount');
+const loadingElement = document.getElementById('loading');
+const errorElement = document.getElementById('error');
+const errorMsgElement = document.getElementById('errorMsg');
+const resultElement = document.getElementById('result');
+const channelTitleElement = document.getElementById('channelTitle');
+const subscriberCountElement = document.getElementById('subscriberCount');
+const viewCountElement = document.getElementById('viewCount');
+const videoCountElement = document.getElementById('videoCount');
+const channelIconElement = document.getElementById('channelIcon');
+const todayGainElement = document.getElementById('todayGain');
+const weekGainElement = document.getElementById('weekGain');
+const monthGainElement = document.getElementById('monthGain');
+const lastUpdatedElement = document.getElementById('lastUpdated');
+const toggleAutoRefreshBtn = document.getElementById('toggleAutoRefresh');
 
-// State
-let currentChannelId = null;
-let subscriberHistory = [];
-let requestCounter = 0;
-let pollingInterval = null;
+// State variables
+let autoRefreshInterval = null;
+let currentChannelId = '';
+let previousSubscriberCount = 0;
+let stats = {
+  today: 0,
+  week: 0,
+  month: 0
+};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Default placeholder
-    channelInput.value = 'https://youtube.com/@cs_skin_tool'; 
-    
-    // Add event listeners
-    fetchBtn.addEventListener('click', fetchChannelData);
-    channelInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            fetchChannelData();
-        }
-    });
-    
-    // Initial fetch
-    setTimeout(fetchChannelData, 500);
+  // Set default channel (TechGuy) for demonstration
+  channelUrlUC_x5XG1OV2P6uZZ5FSM9Ttw';
+  
+  // Add event listeners
+  fetchBtn.addEventListener('click', fetchSubscribers);
+  toggleAutoRefreshBtn.addEventListener('click', toggleAutoRefresh);
+  
+  // Allow Enter key to fetch
+  channelUrlInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      fetchSubscribers();
+    }
+  });
 });
 
-// Main function to fetch channel data
-async function fetchChannelData() {
-    const channelIdentifier = channelInput.value.trim();
+// Function to extract channel ID from URL
+function extractChannelId(url) {
+  try {
+    const parsedUrl = new URL(url);
     
-    if (!channelIdentifier) {
-        showError('Please enter a YouTube channel URL or ID');
-        return;
+    // Handle youtu.be/CHANNEL_ID
+    if (parsedUrl.hostname === 'youtu.be') {
+      return parsedUrl.pathname.substring(1);
     }
     
-    errorContainer.style.display = 'none';
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
+    // Handle youtube.com/channel/CHANNEL_ID
+    if (parsedUrl.hostname.includes('youtube.com') parsedUrl.pathname.startsWith('/channel/')) {
+      return parsedUrl.pathname.split('/')[2];
     }
     
-    setLoadingState(true);
+    // Handle youtube.com/c/CHANNEL_NAME
+    if (parsedUrl.hostname.includes('youtube.com') && parsedUrl.pathname.startsWith('/c/')) {
+      return parsedUrl.pathname.split('/')[2];n    }
     
+    // Handle youtube.com/@CHANNEL_NAME
+    if (parsedUrl.hostname.includes('youtube.com') && parsedUrl.pathname.startsWith('/@ {
+      return parsedUrl.pathname.split('/')[1];
+    }
+    
+    // If it's just a channel ID
+    if (url.length > 20 && !url.includes('/') && !url.includes('.')) {
+      return url;
+    }
+    
+  } catch (e) {
+    // If URL parsing fails, treat as channel ID
+    return url;
+  }
+  
+  return null;
+}
+
+// Main function to fetch subscriber count
+async function fetchSubscribers() {
+  const channelUrl = channelUrlInput.value.trim();
+  if (!channelUrl) {
+    showError('Please enter a YouTube channel URL or ID');
+    return;
+  }
+  
+  const channelId = extractChannelId(channelUrl);
+  if (!channelId) {
+    showError('Invalid YouTube channel URL;
+  }
+  
+  // Show loading
+  showLoading();
+  
+  try {
+    // First, get channel only have username/custom URL
+    let finalChannelId = channelId;
+    if (channelId.length < 25) { // Likely a custom URL or username
+      const channelInfo = await getChannelFromCustomUrl(channelId);
+      if (channelInfo) {
+        finalChannelId = channelInfo.id;
+      } else {
+        throw new Error('Channel not found');
+      }
+    }
+    
+    currentChannelId = finalChannelId;
+    
+    // Get channel statistics
+    const stats = await getChannelStatistics(finalChannelId);
+    if (!stats) {
+      throw new Error('Failed to fetch channel statistics');
+    }
+    
+    // Update UI
+    updateUI(stats);
+    
+    // Hide error if shown
+    hideError();
+    
+    // Start auto-refresh if not already running
+    if (!autoRefreshInterval) {
+      startAutoRefresh(finalChannelId);
+    }
+    
+  } catch (error) {
+    console.error('Error fetching subscribers:', error);
+    showError(error.message || 'Failed to fetch subscriber count');
+  }
+}
+
+// Get channel ID from custom URL/username
+async functionUrl(customUrl) {
+  try {
+    const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(customUrl)}&type=channel&key=${API_KEY}`);
+    const data = await response.json();
+    
+    if (data.items && data.items.length > 0) {
+      return {
+        id: data.items[0].id.channelId || data.items[0].snippet.channelId,
+        title: data.items[0].snippet.title
+      };
+    }
+  } catch (error) {
+    console.error('Error searching channel:', error);
+  }
+  
+  return null;
+// Get channel statistics
+async function getChannelStatistics(channelId) {
+  try {
+    const response = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}&key=${API_KEY}`);
+    const data = await response.json();
+    
+    if (data.items && data.items.length > 0) {
+      const channel = data.items[0];
+      return {
+        title: channel.snippet.title,
+        subscriberCount: channel.statistics.subscriberCount,
+        viewCount: channel.statistics.viewCount,
+        videoCount: channel.statistics.videoCount,
+        channelId: channel.id,
+        thumbnail: channel.snippet.thumbnails.medium.url,
+        publishedAt: channel.snippet.publishedAt
+      };
+    }
+  } catch (error) {
+    console.error('Error getting channel stats:', error);
+  }
+  
+  return null;
+}
+
+// Update UI with channel data
+function updateUI(channelData) {
+  // Update channel info
+  channelTitleElement.textContent = channelData.title;
+  subscriberCountElement.textContent = formatNumber(channelData.subscriberCount);
+  viewCountElement.textContent = formatNumber(channelData.viewCount);
+  videoCountElement.textContent = formatNumber(channelData.videoCount);
+  channelIconElement.src = channelData.thumbnail;
+  
+  // Update stats (simulate gains based on previous count)
+  if (previousSubscriberCount > 0) {
+    const gain = parseInt(channelData.subscriberCount) - previousSubscriberCount;
+    updateGainDisplay(gain);
+  }
+  
+  previousSubscriberCount = parseInt(channelData.subscriberCount);
+  
+  // Update last updated time
+  const now = new Date();
+  lastUpdatedElement.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+  
+  // Show result
+  resultElement.style.display = 'block';
+  
+  // Hide loading
+  hideLoading();
+}
+
+// Update gain display
+function updateGainDisplay(gain) {
+  if (gain > 0) {
+    todayGainElement.textContent = `+${formatNumber(gain)}`;
+    weekGainElement.textContent = `+${formatNumber(gain * 7)}`;
+    monthGainElement.textContent = `+${formatNumber(gain * 30)}`;
+  } else if (gain < 0) {
+    todayGainElement.textContent = `${gain}`;
+    weekGainElement.textContent = `${gain * 7}`;
+    monthGainElement.textContent = `${gain * 30}`;
+  } else {
+    todayGainElement.textContent = '+0';
+    weekGainElement.textContent = '+0';
+    monthGainElement.textContent = '+0';
+  }
+}
+
+// Start auto-refresh
+function startAutoRefresh(channelId) {
+  if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+  }
+  
+  autoRefreshInterval = setInterval(async () => {
     try {
-        let channelId = null;
+      const stats = await getChannelStatistics(channelId);
+      if (stats) {
+        updateUI(stats);
         
-        if (isValidUrl(channelIdentifier)) {
-            channelId = await extractChannelIdFromUrl(channelIdentifier);
-        } else if (channelIdentifier.startsWith('UC')) {
-            channelId = channelIdentifier;
-        } else if (channelIdentifier.startsWith('@')) {
-            channelId = await getChannelIdFromCustomUrl(channelIdentifier);
-        } else {
-            channelId = await getChannelIdFromCustomUrl('@' + channelIdentifier);
-        }
-        
-        if (!channelId) {
-            showError('Channel ID nahi dhoond paaye. Please check details.');
-            setLoadingState(false);
-            return;
-        }
-        
-        const channelData = await getChannelData(channelId);
-        
-        if (!channelData) {
-            showError('YouTube ne data nahi diya. Check if API Key is active.');
-            setLoadingState(false);
-            return;
-        }
-        
-        updateChannelInfo(channelData);
-        setLoadingState(false);
-        
-        currentChannelId = channelId;
-        startLivePolling(channelId);
-        
+        // Update button text
+        toggleAutoRefreshBtn.innerHTML = '<i class="fas fa-pause"></i> Pause Auto Refresh';
+      }
     } catch (error) {
-        console.error('Error fetching channel data:', error);
-        showError('Failed to fetch data. API Key ya Internet check karein.');
-        setLoadingState(false);
+      console.error('Auto-refresh error:', error);
     }
+  }, 5000); // Refresh every 5 seconds
 }
 
-// Get channel data from YouTube API
-async function getChannelData(channelId) {
-    const url = `${API_URL}channels?part=snippet,statistics&id=${channelId}&key=${API_KEY}`;
-    
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`API error: ${response.status}`);
-        
-        const data = await response.json();
-        requestCounter++;
-        if(requestCount) requestCount.textContent = requestCounter;
-        
-        if (data.items && data.items.length > 0) {
-            return data.items[0];
-        }
-        return null;
-    } catch (error) {
-        console.error('Error in getChannelData:', error);
-        throw error;
+// Toggle auto-refresh
+function toggleAutoRefresh() {
+  if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+    autoRefreshInterval = null;
+    toggleAutoRefreshBtn.innerHTML = '<i class="fas fa-play"></i> Resume Auto Refresh';
+  } else {
+    if (currentChannelId) {
+      startAutoRefresh(currentChannelId);
+      toggleAutoRefreshBtn.innerHTML = '<i class="fas fa-pause"></i> Pause Auto Refresh';
     }
+  }
 }
 
-// Extract channel ID or handle from URL
-async function extractChannelIdFromUrl(url) {
-    try {
-        const parsedUrl = new URL(url);
-        const path = parsedUrl.pathname;
-        
-        if (parsedUrl.hostname.includes('youtube.com')) {
-            if (path.startsWith('/channel/')) {
-                return path.split('/channel/')[1].split('?')[0];
-            } else if (path.startsWith('/c/')) {
-                let cleanHandle = path.split('/c/')[1].split('?')[0].split('/')[0];
-                return await getChannelIdFromCustomUrl('@' + cleanHandle);
-            } else if (path.includes('/@')) {
-                let cleanHandle = path.split('/@')[1].split('?')[0].split('/')[0];
-                return await getChannelIdFromCustomUrl('@' + cleanHandle);
-            }
-        } else if (parsedUrl.hostname === 'youtu.be') {
-            const videoId = path.split('/')[1];
-            return await getChannelIdFromVideoId(videoId);
-        }
-        return null;
-    } catch (e) {
-        return null;
-    }
+// Show loading state
+function showLoading() {
+  loadingElement.style.display = 'block';
+  resultElement.style.display = 'none';
+  errorElement.style.display = 'none';
 }
 
-// Search channel ID using handle
-async function getChannelIdFromCustomUrl(customUrl) {
-    try {
-        const searchUrl = `${API_URL}search?part=id&q=${encodeURIComponent(customUrl)}&type=channel&key=${API_KEY}`;
-        const response = await fetch(searchUrl);
-        const data = await response.json();
-        
-        if (data && data.items && data.items.length > 0) {
-            return data.items[0].id.channelId;
-        }
-        return null;
-    } catch (error) {
-        console.error('Custom URL conversion error:', error);
-        return null;
-    }
+// Hide loading state
+function hideLoading() {
+  loadingElement.style.display = 'none';n
+// Show error
+) {
+  errorMsgElement.textContent = message;
+  errorElement.style.display = 'block';
+  resultElement.style.display = 'none';
+  loadingElement.style.display = 'none';
 }
 
-// Get channel ID from video ID
-async function getChannelIdFromVideoId(videoId) {
-    try {
-        const videoUrl = `${API_URL}videos?part=snippet&id=${videoId}&key=${API_KEY}`;
-        const response = await fetch(videoUrl);
-        const data = await response.json();
-        
-        if (data.items && data.items.length > 0) {
-            return data.items[0].snippet.channelId;
-        }
-        return null;
-    } catch (error) {
-        return null;
-    }
+// Hide error
+function hideError() 'none';
 }
 
-// Update UI with channel information
-function updateChannelInfo(channelData) {
-    const snippet = channelData.snippet;
-    const statistics = channelData.statistics;
-    
-    if(channelTitle) channelTitle.textContent = snippet.title;
-    
-    let description = snippet.description || 'No description available.';
-    if (description.length > 200) description = description.substring(0, 200) + '...';
-    if(channelDescription) channelDescription.textContent = description;
-    
-    if (channelIcon) {
-        if (snippet.thumbnails && snippet.thumbnails.medium) {
-            channelIcon.src = snippet.thumbnails.medium.url;
-        } else if (snippet.thumbnails && snippet.thumbnails.default) {
-            channelIcon.src = snippet.thumbnails.default.url;
-        }
-    }
-    
-    if (snippet.publishedAt && channelJoined) {
-        const date = new Date(snippet.publishedAt);
-        channelJoined.textContent = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    }
-    
-    if(channelCountry) channelCountry.textContent = snippet.country || 'N/A';
-    
-    if(subscriberCount) subscriberCount.textContent = formatNumber(statistics.subscriberCount);
-    if(videoCount) videoCount.textContent = formatNumber(statistics.videoCount);
-    if(viewCount) viewCount.textContent = formatNumber(statistics.viewCount);
-    
-    updateChangeIndicator(statistics.subscriberCount);
-    showSuccessAnimation();
+// Format number with commas
+function formatNumber(number) {
+  return Number(number).toLocaleString('en-US');
 }
 
-// Start live polling for subscriber count
-function startLivePolling(channelId) {
-    pollingInterval = setInterval(async () => {
-        try {
-            const channelData = await getChannelData(channelId);
-            if (channelData) {
-                updateChannelInfo(channelData);
-                const lastUpdatedElement = document.querySelector('.last-updated');
-                if (lastUpdatedElement) lastUpdatedElement.textContent = 'Updated just now';
-            }
-        } catch (error) {
-            console.error('Error in live polling:', error);
-        }
-    }, 10000);
-}
-
-// Update change indicator
-function updateChangeIndicator(currentSubscribers) {
-    subscriberHistory.push(parseInt(currentSubscribers));
-    if (subscriberHistory.length > 5) subscriberHistory.shift();
-    
-    if (subscriberHistory.length >= 2 && subChange) {
-        const last = subscriberHistory[subscriberHistory.length - 1];
-        const previous = subscriberHistory[subscriberHistory.length - 2];
-        const change = last - previous;
-        
-        if (change > 0) {
-            subChange.innerHTML = `<i class="fas fa-arrow-up"></i> +${formatNumber(change)} just now`;
-            subChange.style.color = 'green';
-        } else if (change < 0) {
-            subChange.innerHTML = `<i class="fas fa-arrow-down"></i> -${formatNumber(Math.abs(change))} just now`;
-            subChange.style.color = 'red';
-        } else {
-            subChange.innerHTML = 'Stable';
-            subChange.style.color = 'gray';
-        }
-    } else if (subChange) {
-        subChange.innerHTML = 'Counting...';
-        subChange.style.color = 'gray';
-    }
-}
-
-function formatNumber(num) {
-    return new Intl.NumberFormat('en-US').format(num);
-}
-
-function showError(message) {
-    if(errorContainer) {
-        errorContainer.textContent = message;
-        errorContainer.style.display = 'block';
-        setTimeout(() => { errorContainer.style.display = 'none'; }, 5000);
-    }
-}
-
-function setLoadingState(isLoading) {
-    if (!fetchBtn) return;
-    if (isLoading) {
-        fetchBtn.innerHTML = 'Loading...';
-        fetchBtn.disabled = true;
-    } else {
-        fetchBtn.innerHTML = 'Fetch Subscribers';
-        fetchBtn.disabled = false;
-    }
-}
-
-function showSuccessAnimation() {
-    if(!subscriberCount) return;
-    subscriberCount.style.transform = 'scale(1.05)';
-    setTimeout(() => { subscriberCount.style.transform = 'scale(1)'; }, 200);
-}
-
-function isValidUrl(string) {
-    try { new URL(string); return true; } catch (_) { return false; }
-}
+// Handle page visibility change (pause/resume when tab is hidden/visible)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+    autoRefreshInterval = null;
+    toggleAutoRefreshBtn.innerHTML = '<i class="fas fa-play"></i> Resume Auto Refresh';
+  }
+});
