@@ -1,6 +1,6 @@
 // YouTube API Configuration
 // ⚠️ NOTE: Agar data fetch na ho, to check karna ki Google Cloud me "YouTube Data API v3" ENABLE hai ya nahi.
-const API_KEY = 'AIzaSyCMAe3YZ9pGseXKJZnsRcEUcg2ZHIPBIEg'; 
+const API_KEY = 'AIzaSyAXQG0_IA3aIA3YbbFW2L-nTWoAUnUdFqM'; 
 const API_URL = 'https://www.googleapis.com/youtube/v3/';
 
 // DOM Elements
