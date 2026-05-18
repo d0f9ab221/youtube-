@@ -1,5 +1,6 @@
 // YouTube API Configuration
-const API_KEY = 'AIzaSyCMAe3YZ9pGseXKJZnsRcEUcg2ZHIPBIEg';
+// ⚠️ NOTE: Agar data fetch na ho, to check karna ki Google Cloud me "YouTube Data API v3" ENABLE hai ya nahi.
+const API_KEY = 'AIzaSyCMAe3YZ9pGseXKJZnsRcEUcg2ZHIPBIEg'; 
 const API_URL = 'https://www.googleapis.com/youtube/v3/';
 
 // DOM Elements
@@ -25,8 +26,8 @@ let pollingInterval = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Set initial placeholder
-    channelInput.value = 'UC_x5XG1OV2P6uZZ5FSM9Ttw'; // MKBHD default
+    // Default placeholder (Aapka channel link handle ke sath)
+    channelInput.value = 'https://youtube.com/@cs_skin_tool'; 
     
     // Add event listeners
     fetchBtn.addEventListener('click', fetchChannelData);
@@ -36,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Initial fetch
+    // Initial fetch thodi der baad chalega
     setTimeout(fetchChannelData, 500);
 });
 
@@ -49,49 +50,58 @@ async function fetchChannelData() {
         return;
     }
     
-    // Hide previous errors
+    // Hide previous errors & stop previous loop
     errorContainer.style.display = 'none';
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
     
     // UI Loading state
     setLoadingState(true);
     
     try {
-        // Determine if it's a URL or ID
-        let channelId;
+        let channelId = null;
         
+        // Check karein agar user ne poora URL daala hai ya sirf ID
         if (isValidUrl(channelIdentifier)) {
             channelId = await extractChannelIdFromUrl(channelIdentifier);
-            if (!channelId) {
-                showError('Invalid YouTube channel URL');
-                setLoadingState(false);
-                return;
-            }
+        } else if (channelIdentifier.startsWith('UC')) {
+            channelId = channelIdentifier; // Agar direct UC se shuru hone wali ID hai
+        } else if (channelIdentifier.startsWith('@')) {
+            // Agar direct handle daala hai jaise @cs_skin_tool
+            channelId = await getChannelIdFromCustomUrl(channelIdentifier);
         } else {
-            channelId = channelIdentifier;
+            // Agar normal naam likha hai
+            channelId = await getChannelIdFromCustomUrl('@' + channelIdentifier);
         }
         
-        // Fetch channel data
-        const channelData = await getChannelData(channelId);
-        
-        if (!channelData) {
-            showError('Channel not found. Please check the ID/URL and try again.');
+        if (!channelId) {
+            showError('Channel ID nahi dhoond paaye. Please check details.');
             setLoadingState(false);
             return;
         }
         
-        // Update UI with channel data
-        updateChannelInfo(channelData);
+        // Fetch actual channel stats
+        const channelData = await getChannelData(channelId);
         
-        // Start live polling if not already running
-        if (!pollingInterval) {
-            startLivePolling(channelId);
+        if (!channelData) {
+            showError('YouTube ne is Channel ka data nahi diya. Check your API Key.');
+            setLoadingState(false);
+            return;
         }
         
+        // UI updates
+        updateChannelInfo(channelData);
+        setLoadingState(false);
+        
+        // Live polling start (Har 10 seconds me update karega)
         currentChannelId = channelId;
+        startLivePolling(channelId);
         
     } catch (error) {
         console.error('Error fetching channel data:', error);
-        showError('Failed to fetch channel data. Please try again.');
+        showError('Failed to fetch data. API Key ya Internet check karein.');
         setLoadingState(false);
     }
 }
@@ -102,19 +112,15 @@ async function getChannelData(channelId) {
     
     try {
         const response = await fetch(url);
-        
-        if (!response.ok) {
-            throw new Error(`API request failed: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`API error: ${response.status}`);
         
         const data = await response.json();
         requestCounter++;
-        requestCount.textContent = requestCounter;
+        if(requestCount) requestCount.textContent = requestCounter;
         
         if (data.items && data.items.length > 0) {
             return data.items[0];
         }
-        
         return null;
     } catch (error) {
         console.error('Error in getChannelData:', error);
@@ -122,53 +128,48 @@ async function getChannelData(channelId) {
     }
 }
 
-// Extract channel ID from URL
+// FIX: Isme ab modern @ Handles aur /c/ dono support hote hain
 async function extractChannelIdFromUrl(url) {
     try {
         const parsedUrl = new URL(url);
+        const path = parsedUrl.pathname;
         
-        // Handle different YouTube URL patterns
-        if (parsedUrl.hostname === 'www.youtube.com' || parsedUrl.hostname === 'youtube.com') {
-            const path = parsedUrl.pathname;
-            
+        if (parsedUrl.hostname.includes('youtube.com')) {
             if (path.startsWith('/channel/')) {
                 return path.split('/channel/')[1].split('?')[0];
-            } else if (path.startsWith('/c/')) {
-                // For custom URLs, need to convert to channel ID via API
-                const customUrl = path.split('/c/')[1];
-                return await getChannelIdFromCustomUrl(customUrl);
+            } else if (path.startsWith('/c/') || path.includes('/@')) {
+                let cleanHandle = path.includes('/@') ? path.split('/@')[1] : path.split('/c/')[1];
+                cleanHandle = cleanHandle.split('?')[0].split('/')[0];
+                return await getChannelIdFromCustomUrl('@' + cleanHandle);
             }
         } else if (parsedUrl.hostname === 'youtu.be') {
-            const videoId = parsedUrl.pathname.split('/')[1];
-            // For youtu.be links, we need to get the channel from video
+            const videoId = path.split('/')[1];
             return await getChannelIdFromVideoId(videoId);
         }
-        
         return null;
     } catch (e) {
         return null;
     }
 }
 
-// Get channel ID from custom URL (handle /c/username)
+// Search channel ID using handle or custom name
 async function getChannelIdFromCustomUrl(customUrl) {
     try {
         const searchUrl = `${API_URL}search?part=id&q=${encodeURIComponent(customUrl)}&type=channel&key=${API_KEY}`;
         const response = await fetch(searchUrl);
         const data = await response.json();
         
-        if (data.items && data.items.length > 0) {
+        if (data && data.items && data.items.length > 0) {
             return data.items[0].id.channelId;
         }
-        
         return null;
     } catch (error) {
-        console.error('Error getting channel from custom URL:', error);
+        console.error('Custom URL conversion error:', error);
         return null;
     }
 }
 
-// Get channel ID from video ID (for youtu.be links)
+// Get channel ID from video ID (for share links)
 async function getChannelIdFromVideoId(videoId) {
     try {
         const videoUrl = `${API_URL}videos?part=snippet&id=${videoId}&key=${API_KEY}`;
@@ -178,10 +179,8 @@ async function getChannelIdFromVideoId(videoId) {
         if (data.items && data.items.length > 0) {
             return data.items[0].snippet.channelId;
         }
-        
         return null;
     } catch (error) {
-        console.error('Error getting channel from video ID:', error);
         return null;
     }
 }
@@ -191,163 +190,107 @@ function updateChannelInfo(channelData) {
     const snippet = channelData.snippet;
     const statistics = channelData.statistics;
     
-    // Update channel title
-    channelTitle.textContent = snippet.title;
+    if(channelTitle) channelTitle.textContent = snippet.title;
     
-    // Update description (truncate if too long)
     let description = snippet.description || 'No description available.';
-    if (description.length > 200) {
-        description = description.substring(0, 200) + '...';
-    }
-    channelDescription.textContent = description;
+    if (description.length > 200) description = description.substring(0, 200) + '...';
+    if(channelDescription) channelDescription.textContent = description;
     
-    // Update channel icon
-    if (snippet.thumbnails && snippet.thumbnails.default) {
-        channelIcon.src = snippet.thumbnails.default.url;
-    } else {
-        channelIcon.src = 'https://image.pollinations.ai/prompt/YouTube%20channel%20default%20avatar';
+    if (channelIcon) {
+        if (snippet.thumbnails && snippet.thumbnails.medium) {
+            channelIcon.src = snippet.thumbnails.medium.url;
+        } else if (snippet.thumbnails && snippet.thumbnails.default) {
+            channelIcon.src = snippet.thumbnails.default.url;
+        }
     }
     
-    // Update join date
-    if (snippet.publishedAt) {
+    if (snippet.publishedAt && channelJoined) {
         const date = new Date(snippet.publishedAt);
         channelJoined.textContent = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    } else {
-        channelJoined.textContent = 'N/A';
     }
     
-    // Update country
-    channelCountry.textContent = snippet.country || 'N/A';
+    if(channelCountry) channelCountry.textContent = snippet.country || 'N/A';
     
-    // Update statistics with formatting
-    subscriberCount.textContent = formatNumber(statistics.subscriberCount);
-    videoCount.textContent = formatNumber(statistics.videoCount);
-    viewCount.textContent = formatNumber(statistics.viewCount);
+    // Updating Numbers
+    if(subscriberCount) subscriberCount.textContent = formatNumber(statistics.subscriberCount);
+    if(videoCount) videoCount.textContent = formatNumber(statistics.videoCount);
+    if(viewCount) viewCount.textContent = formatNumber(statistics.viewCount);
     
-    // Update change indicator (simulate based on history)
     updateChangeIndicator(statistics.subscriberCount);
-    
-    // Show success animation
     showSuccessAnimation();
 }
 
 // Start live polling for subscriber count
 function startLivePolling(channelId) {
-    // Clear existing interval if any
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-    }
-    
-    // Poll every 10 seconds
     pollingInterval = setInterval(async () => {
         try {
             const channelData = await getChannelData(channelId);
-            
             if (channelData) {
                 updateChannelInfo(channelData);
-                
-                // Update last updated time
-                document.querySelector('.last-updated').textContent = 'Updated just now';
+                const lastUpdatedElement = document.querySelector('.last-updated');
+                if (lastUpdatedElement) lastUpdatedElement.textContent = 'Updated just now';
             }
         } catch (error) {
             console.error('Error in live polling:', error);
         }
-    }, 10000);
+    }, 10000); // 10 seconds check
 }
 
 // Update change indicator based on subscriber history
 function updateChangeIndicator(currentSubscribers) {
     subscriberHistory.push(parseInt(currentSubscribers));
+    if (subscriberHistory.length > 5) subscriberHistory.shift();
     
-    // Keep only last 5 entries
-    if (subscriberHistory.length > 5) {
-        subscriberHistory.shift();
-    }
-    
-    if (subscriberHistory.length >= 2) {
+    if (subscriberHistory.length >= 2 && subChange) {
         const last = subscriberHistory[subscriberHistory.length - 1];
         const previous = subscriberHistory[subscriberHistory.length - 2];
         const change = last - previous;
         
         if (change > 0) {
-            subChange.innerHTML = `<i class="fas fa-arrow-up"></i> +${formatNumber(change)} today`;
-            subChange.style.color = 'var(--success-color)';
+            subChange.innerHTML = `<i class="fas fa-arrow-up"></i> +${formatNumber(change)} just now`;
+            subChange.style.color = 'green';
         } else if (change < 0) {
-            subChange.innerHTML = `<i class="fas fa-arrow-down"></i> -${formatNumber(Math.abs(change))} today`;
-            subChange.style.color = 'var(--danger-color)';
+            subChange.innerHTML = `<i class="fas fa-arrow-down"></i> -${formatNumber(Math.abs(change))} just now`;
+            subChange.style.color = 'red';
         } else {
-            subChange.innerHTML = '+0 today';
-            subChange.style.color = 'var(--text-secondary)';
+            subChange.innerHTML = 'Stable';
+            subChange.style.color = 'gray';
         }
-    } else {
-        subChange.innerHTML = '+0 today';
-        subChange.style.color = 'var(--text-secondary)';
+    } else if (subChange) {
+        subChange.innerHTML = 'Counting...';
+        subChange.style.color = 'gray';
     }
 }
 
-// Format numbers with commas
 function formatNumber(num) {
     return new Intl.NumberFormat('en-US').format(num);
 }
 
-// Show error message
 function showError(message) {
-    errorContainer.textContent = message;
-    errorContainer.style.display = 'block';
-    
-    // Clear error after 5 seconds
-    setTimeout(() => {
-        errorContainer.style.display = 'none';
-    }, 5000);
+    if(errorContainer) {
+        errorContainer.textContent = message;
+        errorContainer.style.display = 'block';
+        setTimeout(() => { errorContainer.style.display = 'none'; }, 5000);
+    }
 }
 
-// Set loading state
 function setLoadingState(isLoading) {
+    if (!fetchBtn) return;
     if (isLoading) {
-        fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+        fetchBtn.innerHTML = 'Loading...';
         fetchBtn.disabled = true;
-        fetchBtn.style.opacity = '0.7';
-        
-        // Clear previous data
-        subscriberCount.textContent = '--';
-        videoCount.textContent = '--';
-        viewCount.textContent = '--';
-        channelTitle.textContent = 'Loading...';
-        channelDescription.textContent = 'Fetching channel data...';
-        channelIcon.src = 'https://image.pollinations.ai/prompt/YouTube%20channel%20default%20avatar';
-        
     } else {
-        fetchBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Fetch Subscribers';
+        fetchBtn.innerHTML = 'Fetch Subscribers';
         fetchBtn.disabled = false;
-        fetchBtn.style.opacity = '1';
     }
 }
 
-// Show success animation
 function showSuccessAnimation() {
-    // Add a subtle animation to the subscriber count
-    subscriberCount.style.transform = 'scale(1.1)';
-    setTimeout(() => {
-        subscriberCount.style.transform = 'scale(1)';
-    }, 300);
+    if(!subscriberCount) return;
+    subscriberCount.style.transform = 'scale(1.05)';
+    setTimeout(() => { subscriberCount.style.transform = 'scale(1)'; }, 200);
 }
 
-// Validate YouTube URL
 function isValidUrl(string) {
-    try {
-        new URL(string);
-        return true;
-    } catch (_) {
-        return false;
-    }
+    try { new URL(string); return true; } catch (_) { return false; }
 }
-
-// Handle page visibility change to pause/resume polling
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden && pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-    } else if (!document.hidden && currentChannelId && !pollingInterval) {
-        startLivePolling(currentChannelId);
-    }
-});
